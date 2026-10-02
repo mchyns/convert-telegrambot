@@ -18,6 +18,33 @@ logging.basicConfig(
 logger = logging.getLogger("app.main")
 
 
+import os
+from aiohttp import web
+
+async def _health_handler(request: web.Request) -> web.Response:
+    return web.json_response({"status": "ok", "app": settings.APP_NAME})
+
+
+async def _start_health_server():
+    port_env = os.getenv("PORT")
+    if not port_env:
+        return None
+    try:
+        port = int(port_env)
+        app = web.Application()
+        app.router.add_get("/", _health_handler)
+        app.router.add_get("/health", _health_handler)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"Render health check HTTP server listening on port {port}")
+        return runner
+    except Exception as e:
+        logger.warning(f"Could not start health check web server: {e}")
+        return None
+
+
 async def main() -> None:
     """Main application lifecycle."""
     logger.info(f"Starting {settings.APP_NAME} in '{settings.APP_ENV}' environment...")
@@ -40,8 +67,9 @@ async def main() -> None:
     temp_dir = settings.temp_path
     logger.info(f"Temporary file storage initialized at: {temp_dir}")
 
-    # 3. Start periodic background cleanup task
+    # 3. Start periodic background cleanup task & optional health check server for Render
     cleanup_task = asyncio.create_task(run_periodic_cleanup())
+    health_runner = await _start_health_server()
 
     # 4. Initialize Telegram Bot & Dispatcher
     bot = Bot(token=settings.BOT_TOKEN or "dummy_token_for_init")
@@ -63,6 +91,8 @@ async def main() -> None:
         logger.exception(f"Error during bot execution: {e}")
     finally:
         cleanup_task.cancel()
+        if health_runner:
+            await health_runner.cleanup()
         await bot.session.close()
         logger.info("Bot application shutdown completed.")
 
