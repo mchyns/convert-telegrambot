@@ -7,13 +7,15 @@ from app.config.settings import settings
 from app.conversion.cleanup import run_periodic_cleanup
 from app.database.session import init_db
 
-# Configure structured logging
+# Configure structured logging (support both console and pythonw background file logging)
+log_handlers = [logging.FileHandler("bot.log", encoding="utf-8")]
+if sys.stdout is not None:
+    log_handlers.append(logging.StreamHandler(sys.stdout))
+
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=log_handlers,
 )
 logger = logging.getLogger("app.main")
 
